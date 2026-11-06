@@ -118,22 +118,30 @@ export function sampleTextPoints(
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, width / 2, cy);
+
+  const lines = text.split('\n');
+  const lineHeight = fontSize * 1.22;
+  const startY = cy - ((lines.length - 1) * lineHeight) / 2;
+
+  lines.forEach((line, idx) => {
+    ctx.fillText(line.trim(), width / 2, startY + idx * lineHeight);
+  });
 
   const imgData = ctx.getImageData(0, 0, width, height);
   const data = imgData.data;
   const points: Point[] = [];
 
   // Bounding box optimization: only scan around the text vertical region
-  const minY = Math.max(0, Math.floor(cy - fontSize * 1.1));
-  const maxY = Math.min(height, Math.ceil(cy + fontSize * 1.1));
+  const totalHeight = lines.length * lineHeight;
+  const minY = Math.max(0, Math.floor(cy - totalHeight * 0.9));
+  const maxY = Math.min(height, Math.ceil(cy + totalHeight * 0.9));
 
   for (let y = minY; y < maxY; y += densityStep) {
     for (let x = 0; x < width; x += densityStep) {
       const idx = (y * width + x) * 4;
       // Check brightness of RGB or alpha channel with lower threshold (covers anti-aliasing)
       const brightness = Math.max(data[idx], data[idx + 1], data[idx + 2]);
-      if (brightness > 60 || data[idx + 3] > 60) {
+      if (brightness > 55 || data[idx + 3] > 55) {
         points.push({
           x: x + (Math.random() - 0.5) * 1.5,
           y: y + (Math.random() - 0.5) * 1.5,

@@ -53,6 +53,8 @@ export const ControlsBar: React.FC<ControlsBarProps> = ({
             ? 'Forever & Always ❤️'
             : currentPhase === 'intro'
             ? 'Starting...'
+            : currentPhase === 'I love Vicusea'
+            ? 'I love Vicusea ❤️'
             : currentPhase
             ? `${currentPhase}`
             : 'For Vicusea'}

@@ -303,17 +303,18 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
     // Dynamic responsive font size tailored for mobile viewports
     let fontSize: number;
     if (text.length <= 2) {
-      // Numbers "3", "2", "1" or "I"
+      // Numbers "3", "2", "1"
       fontSize = isMobile ? Math.min(w * 0.44, 150) : Math.min(w / 3.2, h / 3.2, 190);
-    } else if (text.length <= 4) {
-      // "love", "you,"
-      fontSize = isMobile ? Math.min(w * 0.28, 105) : Math.min(w / 4.4, h / 4.2, 150);
     } else {
-      // "Vicusea"
-      fontSize = isMobile ? Math.min(w / (text.length * 0.62), 85) : Math.min(w / 5.2, h / 4.5, 140);
+      // "I love\nVicusea" (mobile) or "I love Vicusea" (PC)
+      if (isMobile) {
+        fontSize = Math.min(w / 7.2, 54);
+      } else {
+        fontSize = Math.min(w / 15, h / 7, 88);
+      }
     }
 
-    fontSize = Math.max(42, Math.min(fontSize, 190));
+    fontSize = Math.max(38, Math.min(fontSize, 190));
 
     // Store current word info for core glowing text rendering
     stateRef.current.currentWord = text;
@@ -369,10 +370,10 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
     soundController.playHeartbeatSound();
   }, []);
 
-  // Heart Ripple generation
+  // Heart Ripple generation with slower, gentle expansion
   const createHeartRipple = () => {
     const s = stateRef.current;
-    const count = window.innerWidth < 600 ? 75 : 100;
+    const count = window.innerWidth < 600 ? 70 : 95;
     const outline = getHeartOutlinePoints(count, s.heartCenterX, s.heartCenterY, s.heartScale);
     const step = (Math.PI * 2) / count;
 
@@ -380,31 +381,31 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
       const t = i * step;
       const normal = getHeartNormal(t);
       s.rippleParticles.push(
-        new RippleParticle(pt.x, pt.y, normal.nx, normal.ny, Math.random() * 1.5 + 2.0)
+        new RippleParticle(pt.x, pt.y, normal.nx, normal.ny, Math.random() * 0.8 + 1.3)
       );
     });
   };
 
-  // Start sequence animation
+  // Start sequence animation with slower romantic pacing
   const runSequence = useCallback(async () => {
     const s = stateRef.current;
     s.state = 'MATRIX_INTRO';
     onPhaseChange?.('intro');
 
-    // Matrix rain trickle for 2.2s before countdown
-    await new Promise((r) => setTimeout(r, 2200));
+    // Matrix rain trickle for 2.6s before countdown
+    await new Promise((r) => setTimeout(r, 2600));
 
     s.state = 'SEQUENCE';
 
-    // 1. Countdown: "3", "2", "1"
+    // 1. Countdown: "3", "2", "1" with slower, serene transitions
     const countdown = ['3', '2', '1'];
     for (const num of countdown) {
       setCurrentText(num);
       onPhaseChange?.(num);
       updateParticleTargets(num);
-      await new Promise((r) => setTimeout(r, 1900));
+      await new Promise((r) => setTimeout(r, 2800));
 
-      // Explode outward with blast sound & mobile haptics
+      // Slower, softer explosion
       s.isExploding = true;
       soundController.playBurstSound();
       if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
@@ -413,35 +414,35 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
       const canvas = canvasRef.current;
       if (canvas) {
         const cx = window.innerWidth / 2;
-        const cy = window.innerHeight / 2;
-        s.particles.forEach((p) => p.explode(cx, cy, 22));
+        const cy = s.wordCenterY || window.innerHeight / 2;
+        s.particles.forEach((p) => p.explode(cx, cy, 14));
       }
-      await new Promise((r) => setTimeout(r, 650));
+      await new Promise((r) => setTimeout(r, 950));
       s.isExploding = false;
     }
 
-    // 2. Words: "I", "love", "you,", "Vicusea"
-    const words = ['I', 'love', 'you,', 'Vicusea'];
-    for (const word of words) {
-      setCurrentText(word);
-      onPhaseChange?.(word);
-      updateParticleTargets(word);
-      await new Promise((r) => setTimeout(r, 1900));
+    // 2. Immediately after 3, 2, 1: "I love Vicusea"
+    const isMobile = window.innerWidth < 600;
+    const loveText = isMobile ? 'I love\nVicusea' : 'I love Vicusea';
+    setCurrentText('I love Vicusea');
+    onPhaseChange?.('I love Vicusea');
+    updateParticleTargets(loveText);
+    await new Promise((r) => setTimeout(r, 3800));
 
-      s.isExploding = true;
-      soundController.playBurstSound();
-      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-        navigator.vibrate?.(50);
-      }
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const cx = window.innerWidth / 2;
-        const cy = window.innerHeight / 2;
-        s.particles.forEach((p) => p.explode(cx, cy, 24));
-      }
-      await new Promise((r) => setTimeout(r, 650));
-      s.isExploding = false;
+    // Slow-motion burst into the finale
+    s.isExploding = true;
+    soundController.playBurstSound();
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      navigator.vibrate?.(60);
     }
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const cx = window.innerWidth / 2;
+      const cy = s.wordCenterY || window.innerHeight / 2;
+      s.particles.forEach((p) => p.explode(cx, cy, 16));
+    }
+    await new Promise((r) => setTimeout(r, 1100));
+    s.isExploding = false;
 
     // 3. Finale: Grand Heart Formation
     s.state = 'FINAL_HEART';
@@ -461,7 +462,7 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
         origin: { y: 0.55 },
         colors: ['#f43f5e', '#fb7185', '#fda4af', '#ffffff', '#ec4899'],
         shapes: ['circle'],
-        ticks: 200,
+        ticks: 240,
       });
     } catch {
       // Ignore
@@ -625,12 +626,12 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
         ctx.restore();
       }
 
-      // 3.5 Draw sequence word if active (guarantees crystal-clear legibility on mobile)
+      // 3.5 Draw sequence word if active (guarantees crystal-clear legibility on mobile & PC)
       if (s.state === 'SEQUENCE' && s.currentWord) {
         if (!s.isExploding && s.wordOpacity < 0.96) {
-          s.wordOpacity += 0.06;
+          s.wordOpacity += 0.04;
         } else if (s.isExploding) {
-          s.wordOpacity = 0;
+          s.wordOpacity = Math.max(0, s.wordOpacity - 0.07);
         }
 
         if (s.wordOpacity > 0.02) {
@@ -642,12 +643,20 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
           ctx.shadowColor = 'rgba(244, 63, 94, 0.95)';
           ctx.shadowBlur = isMobile ? 22 : 32;
           ctx.fillStyle = '#ffffff';
-          ctx.fillText(s.currentWord, w / 2, s.wordCenterY);
+
+          const lines = s.currentWord.split('\n');
+          const lineHeight = s.wordFontSize * 1.24;
+          const startY = s.wordCenterY - ((lines.length - 1) * lineHeight) / 2;
+
+          lines.forEach((line, idx) => {
+            ctx.fillText(line.trim(), w / 2, startY + idx * lineHeight);
+          });
+
           ctx.restore();
         }
       }
 
-      // 4. Draw Final Glowing Center Text: "I LOVE YOU, VICUSEA ❤️"
+      // 4. Draw Final Glowing Center Text: "I LOVE VICUSEA ❤️"
       if (s.state === 'FINAL_HEART') {
         if (s.textOpacity < 1) {
           s.textOpacity += 0.015;
@@ -668,10 +677,10 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
           const line2Size = Math.min(Math.max(w / 13, 24), 30);
           const centerY = s.heartCenterY + 4;
 
-          // Line 1: "I LOVE YOU,"
+          // Line 1: "I LOVE"
           ctx.font = `700 ${line1Size}px "Plus Jakarta Sans", sans-serif, system-ui`;
           ctx.fillStyle = `rgba(255, 255, 255, ${s.textOpacity})`;
-          ctx.fillText('I LOVE YOU,', s.heartCenterX, centerY - 16);
+          ctx.fillText('I LOVE', s.heartCenterX, centerY - 16);
 
           // Line 2: "VICUSEA ❤️"
           ctx.font = `900 ${line2Size}px "Plus Jakarta Sans", sans-serif, system-ui`;
@@ -693,7 +702,7 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
 
           ctx.font = `900 ${fontSize}px "Plus Jakarta Sans", sans-serif, system-ui`;
           ctx.fillStyle = `rgba(255, 255, 255, ${s.textOpacity})`;
-          ctx.fillText('I LOVE YOU, VICUSEA ❤️', s.heartCenterX, textY);
+          ctx.fillText('I LOVE VICUSEA ❤️', s.heartCenterX, textY);
 
           if (s.textOpacity > 0.4) {
             const subAlpha = (s.textOpacity - 0.4) * 1.6;
