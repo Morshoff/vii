@@ -1,0 +1,744 @@
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import confetti from 'canvas-confetti';
+import {
+  Point,
+  getHeartOutlinePoints,
+  getHeartVolumePoints,
+  getHeartNormal,
+  sampleTextPoints,
+} from '../utils/particleMath';
+import { soundController } from '../utils/audio';
+
+interface ParticleLoveCanvasProps {
+  isPlaying: boolean;
+  onSequenceComplete?: () => void;
+  onPhaseChange?: (phase: string) => void;
+}
+
+// Particle for text & heart formation
+class MainParticle {
+  x: number;
+  y: number;
+  destX: number;
+  destY: number;
+  vx: number = 0;
+  vy: number = 0;
+  baseSize: number;
+  size: number;
+  color: string;
+  alpha: number;
+  sparkleSpeed: number;
+  sparkleOffset: number;
+  isStreaking: boolean = false;
+
+  constructor(x: number, y: number) {
+    this.x = x;
+    this.y = y;
+    this.destX = x;
+    this.destY = y;
+    this.baseSize = Math.random() * 1.6 + 1.4;
+    this.size = this.baseSize;
+    this.sparkleSpeed = Math.random() * 0.08 + 0.03;
+    this.sparkleOffset = Math.random() * Math.PI * 2;
+
+    const palette = [
+      '#ffffff', // bright diamond
+      '#ffffff',
+      '#ffe4e6', // soft rose
+      '#fecdd3', // pale pink
+      '#fda4af', // cherry bloom
+      '#f43f5e', // vivid rose
+      '#ec4899', // bright pink
+      '#a855f7', // subtle violet glow
+    ];
+    this.color = palette[Math.floor(Math.random() * palette.length)];
+    this.alpha = Math.random() * 0.4 + 0.6;
+  }
+
+  explode(centerX: number, centerY: number, power: number = 18) {
+    const angle = Math.atan2(this.y - centerY, this.x - centerX) + (Math.random() - 0.5) * 0.7;
+    const speed = (Math.random() * 0.7 + 0.5) * power;
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed;
+    this.isStreaking = true;
+  }
+
+  update(isExploding: boolean, time: number) {
+    if (isExploding) {
+      this.x += this.vx;
+      this.y += this.vy;
+      this.vx *= 0.94;
+      this.vy *= 0.94;
+    } else {
+      const dx = this.destX - this.x;
+      const dy = this.destY - this.y;
+      this.vx += dx * 0.085;
+      this.vy += dy * 0.085;
+      this.vx *= 0.78;
+      this.vy *= 0.78;
+      this.x += this.vx;
+      this.y += this.vy;
+      this.isStreaking = Math.hypot(this.vx, this.vy) > 8;
+    }
+
+    // Twinkle shimmer
+    this.alpha = 0.6 + 0.4 * Math.sin(time * this.sparkleSpeed + this.sparkleOffset);
+  }
+
+  draw(ctx: CanvasRenderingContext2D) {
+    const speed = Math.hypot(this.vx, this.vy);
+
+    if (this.isStreaking && speed > 3) {
+      // Motion streak line
+      ctx.beginPath();
+      ctx.moveTo(this.x - this.vx * 1.8, this.y - this.vy * 1.8);
+      ctx.lineTo(this.x, this.y);
+      ctx.strokeStyle = this.color;
+      ctx.lineWidth = Math.min(this.size * 1.2, speed * 0.5);
+      ctx.globalAlpha = Math.min(1, this.alpha * 1.2);
+      ctx.stroke();
+    } else {
+      // Shimmering particle
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+      ctx.fillStyle = this.color;
+      ctx.globalAlpha = this.alpha;
+      ctx.fill();
+
+      // Soft glow for brighter particles
+      if (this.size > 2) {
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size * 2, 0, Math.PI * 2);
+        ctx.fillStyle = this.color;
+        ctx.globalAlpha = this.alpha * 0.25;
+        ctx.fill();
+      }
+    }
+  }
+}
+
+// Expanding ripple particle along heart boundary
+class RippleParticle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  alpha: number = 0.9;
+  maxLife: number = 48;
+  life: number = 0;
+  size: number;
+  color: string;
+  active: boolean = true;
+
+  constructor(x: number, y: number, nx: number, ny: number, speed: number = 2.4) {
+    this.x = x;
+    this.y = y;
+    this.vx = nx * speed;
+    this.vy = ny * speed;
+    this.size = Math.random() * 1.6 + 1.2;
+    const colors = ['#f43f5e', '#ec4899', '#fda4af', '#ffffff'];
+    this.color = colors[Math.floor(Math.random() * colors.length)];
+  }
+
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.vx *= 0.98;
+    this.vy *= 0.98;
+    this.life++;
+    this.alpha = Math.max(0, 0.9 * (1 - this.life / this.maxLife));
+    if (this.life >= this.maxLife) {
+      this.active = false;
+    }
+  }
+
+  draw(ctx: CanvasRenderingContext2D) {
+    if (!this.active || this.alpha <= 0) return;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fillStyle = this.color;
+    ctx.globalAlpha = this.alpha;
+    ctx.fill();
+  }
+}
+
+// Matrix falling stream column
+interface MatrixColumn {
+  x: number;
+  y: number;
+  speed: number;
+  chars: string[];
+  headChar: string;
+  length: number;
+  changeTimer: number;
+}
+
+// Floating interactive heart / sparkle
+interface SparkleHeart {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  size: number;
+  alpha: number;
+  rotation: number;
+  vRot: number;
+  color: string;
+  isHeart: boolean;
+}
+
+export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
+  isPlaying,
+  onSequenceComplete,
+  onPhaseChange,
+}) => {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const animFrameRef = useRef<number | null>(null);
+
+  // States
+  const [currentText, setCurrentText] = useState<string>('');
+  const [isFinale, setIsFinale] = useState<boolean>(false);
+
+  // Animation timeline state
+  const stateRef = useRef<{
+    state: 'IDLE' | 'MATRIX_INTRO' | 'SEQUENCE' | 'FINAL_HEART';
+    particles: MainParticle[];
+    rippleParticles: RippleParticle[];
+    sparkles: SparkleHeart[];
+    matrixCols: MatrixColumn[];
+    isExploding: boolean;
+    textOpacity: number;
+    rippleTimer: number;
+    time: number;
+    heartScale: number;
+    heartCenterX: number;
+    heartCenterY: number;
+    currentWordIndex: number;
+  }>({
+    state: 'IDLE',
+    particles: [],
+    rippleParticles: [],
+    sparkles: [],
+    matrixCols: [],
+    isExploding: false,
+    textOpacity: 0,
+    rippleTimer: 0,
+    time: 0,
+    heartScale: 1,
+    heartCenterX: 0,
+    heartCenterY: 0,
+    currentWordIndex: -1,
+  });
+
+  // Matrix characters: romantic phrase "I LOVE YOU VICUSEA ❤"
+  const matrixChars = ['I', 'L', 'O', 'V', 'E', 'Y', 'O', 'U', 'V', 'I', 'C', 'U', 'S', 'E', 'A', '❤', '✦'];
+
+  // Initialize particles & matrix columns
+  const initSimulation = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const isMobile = w < 600;
+
+    // Responsive particle count: ~1100 on mobile, ~1700 on desktop for 60fps
+    const particleCount = isMobile
+      ? Math.min(1250, Math.max(900, Math.floor((w * h) / 380)))
+      : Math.min(1800, Math.max(1300, Math.floor((w * h) / 600)));
+
+    const particles: MainParticle[] = [];
+    for (let i = 0; i < particleCount; i++) {
+      particles.push(new MainParticle(Math.random() * w, Math.random() * h));
+    }
+
+    // Matrix rain columns: slightly narrower on mobile
+    const colStep = isMobile ? 20 : 25;
+    const colCount = Math.floor(w / colStep);
+    const matrixCols: MatrixColumn[] = [];
+    for (let i = 0; i < colCount; i++) {
+      const len = Math.floor(Math.random() * 8 + 5);
+      const chars: string[] = [];
+      for (let j = 0; j < len; j++) {
+        chars.push(matrixChars[Math.floor(Math.random() * matrixChars.length)]);
+      }
+      matrixCols.push({
+        x: i * colStep + 10,
+        y: Math.random() * -h,
+        speed: Math.random() * 2.0 + 1.2,
+        chars,
+        headChar: chars[0],
+        length: len,
+        changeTimer: 0,
+      });
+    }
+
+    stateRef.current.particles = particles;
+    stateRef.current.matrixCols = matrixCols;
+    stateRef.current.heartCenterX = w / 2;
+    // On mobile portrait, position heart slightly higher to leave space for bottom controls
+    stateRef.current.heartCenterY = isMobile ? h * 0.44 : h / 2 - 15;
+    stateRef.current.heartScale = isMobile ? Math.min(w / 31, h / 42) : Math.min(w, h) / 38;
+  }, []);
+
+  // Update targets for particles based on text
+  const updateParticleTargets = useCallback((text: string) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const isMobile = w < 600;
+
+    // Dynamic responsive font size tailored for mobile viewports
+    let fontSize: number;
+    if (text.length <= 2) {
+      // Numbers "3", "2", "1" or "I"
+      fontSize = isMobile ? Math.min(w * 0.42, 140) : Math.min(w / 3.5, h / 3.5, 180);
+    } else if (text.length <= 4) {
+      // "love", "you,"
+      fontSize = isMobile ? Math.min(w * 0.26, 95) : Math.min(w / 4.8, h / 4.5, 140);
+    } else {
+      // "Vicusea"
+      fontSize = isMobile ? Math.min(w / (text.length * 0.65), 78) : Math.min(w / 5.5, h / 4.8, 130);
+    }
+
+    fontSize = Math.max(38, Math.min(fontSize, 180));
+    const densityStep = isMobile ? 3 : (text.length > 5 ? 4 : 3);
+    const textPoints = sampleTextPoints(text, w, h, fontSize, densityStep);
+    const particles = stateRef.current.particles;
+
+    if (textPoints.length === 0) return;
+
+    particles.forEach((p, idx) => {
+      if (idx < textPoints.length) {
+        p.destX = textPoints[idx].x;
+        p.destY = textPoints[idx].y;
+      } else {
+        const mirrorPt = textPoints[idx % textPoints.length];
+        p.destX = mirrorPt.x + (Math.random() - 0.5) * 6;
+        p.destY = mirrorPt.y + (Math.random() - 0.5) * 6;
+      }
+    });
+
+    soundController.playSparkleSound();
+  }, []);
+
+  // Set particle targets to form the glowing heart
+  const setHeartTargets = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const isMobile = w < 600;
+    const cx = w / 2;
+    const cy = isMobile ? h * 0.44 : h / 2 - 15;
+    const scale = isMobile ? Math.min(w / 31, h / 42) : Math.min(w, h) / 38;
+
+    stateRef.current.heartCenterX = cx;
+    stateRef.current.heartCenterY = cy;
+    stateRef.current.heartScale = scale;
+
+    const particles = stateRef.current.particles;
+    const heartPoints = getHeartVolumePoints(particles.length, cx, cy, scale);
+
+    particles.forEach((p, idx) => {
+      const pt = heartPoints[idx % heartPoints.length];
+      p.destX = pt.x;
+      p.destY = pt.y;
+    });
+
+    soundController.playSparkleSound();
+    soundController.playHeartbeatSound();
+  }, []);
+
+  // Heart Ripple generation
+  const createHeartRipple = () => {
+    const s = stateRef.current;
+    const count = window.innerWidth < 600 ? 75 : 100;
+    const outline = getHeartOutlinePoints(count, s.heartCenterX, s.heartCenterY, s.heartScale);
+    const step = (Math.PI * 2) / count;
+
+    outline.forEach((pt, i) => {
+      const t = i * step;
+      const normal = getHeartNormal(t);
+      s.rippleParticles.push(
+        new RippleParticle(pt.x, pt.y, normal.nx, normal.ny, Math.random() * 1.5 + 2.0)
+      );
+    });
+  };
+
+  // Start sequence animation
+  const runSequence = useCallback(async () => {
+    const s = stateRef.current;
+    s.state = 'MATRIX_INTRO';
+    onPhaseChange?.('intro');
+
+    // Matrix rain trickle for 2.2s before countdown
+    await new Promise((r) => setTimeout(r, 2200));
+
+    s.state = 'SEQUENCE';
+
+    // 1. Countdown: "3", "2", "1"
+    const countdown = ['3', '2', '1'];
+    for (const num of countdown) {
+      setCurrentText(num);
+      onPhaseChange?.(num);
+      updateParticleTargets(num);
+      await new Promise((r) => setTimeout(r, 1900));
+
+      // Explode outward with blast sound & mobile haptics
+      s.isExploding = true;
+      soundController.playBurstSound();
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        navigator.vibrate?.(40);
+      }
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const cx = window.innerWidth / 2;
+        const cy = window.innerHeight / 2;
+        s.particles.forEach((p) => p.explode(cx, cy, 22));
+      }
+      await new Promise((r) => setTimeout(r, 650));
+      s.isExploding = false;
+    }
+
+    // 2. Words: "I", "love", "you,", "Vicusea"
+    const words = ['I', 'love', 'you,', 'Vicusea'];
+    for (const word of words) {
+      setCurrentText(word);
+      onPhaseChange?.(word);
+      updateParticleTargets(word);
+      await new Promise((r) => setTimeout(r, 1900));
+
+      s.isExploding = true;
+      soundController.playBurstSound();
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        navigator.vibrate?.(50);
+      }
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const cx = window.innerWidth / 2;
+        const cy = window.innerHeight / 2;
+        s.particles.forEach((p) => p.explode(cx, cy, 24));
+      }
+      await new Promise((r) => setTimeout(r, 650));
+      s.isExploding = false;
+    }
+
+    // 3. Finale: Grand Heart Formation
+    s.state = 'FINAL_HEART';
+    setCurrentText('❤️');
+    setIsFinale(true);
+    onPhaseChange?.('finale');
+    setHeartTargets();
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      navigator.vibrate?.([60, 40, 80]);
+    }
+
+    // Trigger celebratory heart confetti
+    try {
+      confetti({
+        particleCount: window.innerWidth < 600 ? 55 : 85,
+        spread: 90,
+        origin: { y: 0.55 },
+        colors: ['#f43f5e', '#fb7185', '#fda4af', '#ffffff', '#ec4899'],
+        shapes: ['circle'],
+        ticks: 200,
+      });
+    } catch {
+      // Ignore
+    }
+
+    onSequenceComplete?.();
+  }, [updateParticleTargets, setHeartTargets, onPhaseChange, onSequenceComplete]);
+
+  // Main render loop
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const handleResize = () => {
+      // Limit DPR to 2 to prevent mobile GPUs from lagging
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      ctx.setTransform(1, 0, 0, 1, 0, 0); // reset transform before scaling
+      ctx.scale(dpr, dpr);
+      initSimulation();
+      if (stateRef.current.state === 'FINAL_HEART') {
+        setHeartTargets();
+      }
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', handleResize);
+
+    const render = () => {
+      const s = stateRef.current;
+      s.time += 0.04;
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const isMobile = w < 600;
+
+      // Dark trailing fade for motion blur effect
+      ctx.fillStyle = 'rgba(5, 3, 8, 0.28)';
+      ctx.fillRect(0, 0, w, h);
+
+      // 1. Draw Matrix Rain
+      ctx.font = isMobile ? '12px monospace' : '14px monospace';
+      s.matrixCols.forEach((col) => {
+        col.y += col.speed;
+        if (col.y > h + 150) {
+          col.y = -Math.random() * 200 - 50;
+          col.speed = Math.random() * 2.0 + 1.2;
+        }
+
+        col.changeTimer++;
+        if (col.changeTimer % 18 === 0) {
+          col.chars[Math.floor(Math.random() * col.chars.length)] =
+            matrixChars[Math.floor(Math.random() * matrixChars.length)];
+        }
+
+        // Draw character column
+        for (let j = 0; j < col.length; j++) {
+          const charY = col.y - j * (isMobile ? 16 : 18);
+          if (charY > -20 && charY < h + 20) {
+            if (j === 0) {
+              // Glowing head character
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+              ctx.fillText(col.headChar, col.x, charY);
+            } else {
+              // Trailing characters fading down
+              const alpha = Math.max(0, 0.42 * (1 - j / col.length));
+              ctx.fillStyle = `rgba(244, 114, 182, ${alpha})`;
+              ctx.fillText(col.chars[j], col.x, charY);
+            }
+          }
+        }
+      });
+
+      // 2. Draw & Update Main Particles
+      if (s.state === 'FINAL_HEART') {
+        // Heartbeat pulsation
+        const beat = 1 + 0.045 * Math.sin(s.time * 2.8) + 0.02 * Math.sin(s.time * 5.6);
+        const curScale = s.heartScale * beat;
+        const heartPoints = getHeartOutlinePoints(100, s.heartCenterX, s.heartCenterY, curScale);
+
+        // Adjust dest points with current heartbeat beat
+        const outlineCount = Math.floor(s.particles.length * 0.65);
+        s.particles.forEach((p, idx) => {
+          if (idx < outlineCount) {
+            const pt = heartPoints[idx % heartPoints.length];
+            p.destX = pt.x;
+            p.destY = pt.y;
+          }
+        });
+
+        // Spawn periodic heart ripples
+        s.rippleTimer++;
+        if (s.rippleTimer % (isMobile ? 24 : 22) === 0) {
+          createHeartRipple();
+        }
+
+        // Update & Draw Ripple Particles
+        for (let i = s.rippleParticles.length - 1; i >= 0; i--) {
+          const rp = s.rippleParticles[i];
+          rp.update();
+          if (rp.active) {
+            rp.draw(ctx);
+          } else {
+            s.rippleParticles.splice(i, 1);
+          }
+        }
+      }
+
+      // Draw main particles
+      s.particles.forEach((p) => {
+        p.update(s.isExploding, s.time);
+        p.draw(ctx);
+      });
+
+      // 3. Draw Interactive Sparkles
+      for (let i = s.sparkles.length - 1; i >= 0; i--) {
+        const sp = s.sparkles[i];
+        sp.x += sp.vx;
+        sp.y += sp.vy;
+        sp.vy -= 0.03; // float gently upward
+        sp.rotation += sp.vRot;
+        sp.alpha -= 0.015;
+
+        if (sp.alpha <= 0) {
+          s.sparkles.splice(i, 1);
+          continue;
+        }
+
+        ctx.save();
+        ctx.translate(sp.x, sp.y);
+        ctx.rotate(sp.rotation);
+        ctx.globalAlpha = sp.alpha;
+
+        if (sp.isHeart) {
+          ctx.font = `${sp.size}px sans-serif`;
+          ctx.fillStyle = sp.color;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('❤', 0, 0);
+        } else {
+          ctx.beginPath();
+          ctx.arc(0, 0, sp.size, 0, Math.PI * 2);
+          ctx.fillStyle = sp.color;
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // 4. Draw Final Glowing Center Text: "I LOVE YOU, VICUSEA ❤️"
+      if (s.state === 'FINAL_HEART') {
+        if (s.textOpacity < 1) {
+          s.textOpacity += 0.012;
+        }
+
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        // Outer glow
+        ctx.shadowColor = 'rgba(244, 63, 94, 0.9)';
+        ctx.shadowBlur = isMobile ? 18 : 24;
+
+        if (isMobile) {
+          // On mobile: 2-line layout fits naturally inside the heart cavity
+          const line1Size = Math.min(Math.max(w / 18, 17), 22);
+          const line2Size = Math.min(Math.max(w / 15, 20), 26);
+
+          const centerY = s.heartCenterY + 4;
+
+          // Line 1: "I LOVE YOU,"
+          ctx.font = `600 ${line1Size}px "Plus Jakarta Sans", system-ui, sans-serif`;
+          ctx.fillStyle = `rgba(255, 255, 255, ${s.textOpacity * 0.95})`;
+          ctx.fillText('I LOVE YOU,', s.heartCenterX, centerY - 14);
+
+          // Line 2: "VICUSEA ❤️"
+          ctx.font = `bold ${line2Size}px "Plus Jakarta Sans", system-ui, sans-serif`;
+          ctx.fillStyle = `rgba(255, 255, 255, ${s.textOpacity})`;
+          ctx.fillText('VICUSEA ❤️', s.heartCenterX, centerY + 14);
+
+          // Subtitle
+          if (s.textOpacity > 0.5) {
+            const subAlpha = (s.textOpacity - 0.5) * 1.5;
+            ctx.font = `400 11px "Plus Jakarta Sans", sans-serif`;
+            ctx.fillStyle = `rgba(254, 205, 211, ${subAlpha})`;
+            ctx.shadowBlur = 8;
+            ctx.fillText('forever & always in my heart', s.heartCenterX, centerY + 40);
+          }
+        } else {
+          // Desktop single line
+          const fontSize = Math.min(Math.max(w / 24, 18), 34);
+          const textY = s.heartCenterY + 12;
+
+          ctx.font = `bold ${fontSize}px "Plus Jakarta Sans", system-ui, sans-serif`;
+          ctx.fillStyle = `rgba(255, 255, 255, ${s.textOpacity})`;
+          ctx.fillText('I LOVE YOU, VICUSEA ❤️', s.heartCenterX, textY);
+
+          if (s.textOpacity > 0.5) {
+            const subAlpha = (s.textOpacity - 0.5) * 1.6;
+            ctx.font = `400 ${Math.max(12, fontSize * 0.45)}px "Plus Jakarta Sans", sans-serif`;
+            ctx.fillStyle = `rgba(254, 205, 211, ${subAlpha})`;
+            ctx.shadowBlur = 10;
+            ctx.fillText('forever & always in my heart', s.heartCenterX, textY + fontSize * 1.4);
+          }
+        }
+
+        ctx.restore();
+      }
+
+      animFrameRef.current = requestAnimationFrame(render);
+    };
+
+    animFrameRef.current = requestAnimationFrame(render);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('orientationchange', handleResize);
+      if (animFrameRef.current) {
+        cancelAnimationFrame(animFrameRef.current);
+      }
+    };
+  }, [initSimulation, setHeartTargets]);
+
+  // Run sequence when isPlaying becomes true
+  useEffect(() => {
+    if (isPlaying) {
+      runSequence();
+    }
+  }, [isPlaying, runSequence]);
+
+  // Touch / mouse interaction: creates sparkling fairy dust & floating hearts
+  const handlePointerInteraction = (e: React.MouseEvent | React.TouchEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    let clientX = 0;
+    let clientY = 0;
+    if ('touches' in e && e.touches.length > 0) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else if ('clientX' in e) {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    } else {
+      return;
+    }
+
+    // Spawn 4-8 tiny sparkling hearts or stars
+    const count = 5;
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = Math.random() * 2 + 0.8;
+      stateRef.current.sparkles.push({
+        x: clientX + (Math.random() - 0.5) * 10,
+        y: clientY + (Math.random() - 0.5) * 10,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed - 1,
+        size: Math.random() * 12 + 10,
+        alpha: 1,
+        rotation: (Math.random() - 0.5) * 0.4,
+        vRot: (Math.random() - 0.5) * 0.1,
+        color: ['#ff4d6d', '#ff758f', '#ff85a1', '#f72585', '#ffffff'][
+          Math.floor(Math.random() * 5)
+        ],
+        isHeart: Math.random() > 0.4,
+      });
+    }
+  };
+
+  return (
+    <div
+      className="relative w-full h-full overflow-hidden bg-[#050308] touch-none"
+      onMouseMove={handlePointerInteraction}
+      onTouchStart={(e) => {
+        handlePointerInteraction(e);
+        soundController.playSparkleSound();
+        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+          navigator.vibrate?.(15);
+        }
+      }}
+      onTouchMove={handlePointerInteraction}
+      onClick={(e) => {
+        handlePointerInteraction(e);
+        soundController.playSparkleSound();
+      }}
+    >
+      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full block cursor-pointer touch-none" />
+
+      {/* Screen reader & accessible text */}
+      <div className="sr-only" aria-live="polite">
+        {currentText || 'Love message for Vicusea'}
+      </div>
+    </div>
+  );
+};
