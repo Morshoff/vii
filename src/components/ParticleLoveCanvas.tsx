@@ -386,89 +386,132 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
     });
   };
 
+  const mountedRef = useRef<boolean>(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   // Start sequence animation with very slow romantic pacing
+  // 3 2 1 happens once, then "I love you Vicusea" repeats in an infinite, slow romantic cycle!
   const runSequence = useCallback(async () => {
     const s = stateRef.current;
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
     s.state = 'MATRIX_INTRO';
     onPhaseChange?.('intro');
 
-    // Matrix rain trickle for 3.0s before countdown
-    await new Promise((r) => setTimeout(r, 3000));
+    // Matrix rain trickle for 3.2s before countdown
+    await sleep(3200);
+    if (!mountedRef.current) return;
 
     s.state = 'SEQUENCE';
 
-    // 1. Countdown: "3", "2", "1" with very slow, serene transitions (3.8s each)
+    // 1. Countdown: "3", "2", "1" (RUNS ONLY ONCE AT THE VERY BEGINNING!)
     const countdown = ['3', '2', '1'];
     for (const num of countdown) {
+      if (!mountedRef.current) return;
       setCurrentText(num);
       onPhaseChange?.(num);
       updateParticleTargets(num);
-      await new Promise((r) => setTimeout(r, 3800));
+      await sleep(3800); // very calm 3.8s hold for each number
+      if (!mountedRef.current) return;
 
-      // Slow, soft explosion (1.3s)
+      // Gentle, slow-motion starburst
       s.isExploding = true;
       soundController.playBurstSound();
       if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-        navigator.vibrate?.(40);
+        navigator.vibrate?.(35);
       }
       const canvas = canvasRef.current;
       if (canvas) {
         const cx = window.innerWidth / 2;
         const cy = s.wordCenterY || window.innerHeight / 2;
-        s.particles.forEach((p) => p.explode(cx, cy, 10));
+        s.particles.forEach((p) => p.explode(cx, cy, 8.5));
       }
-      await new Promise((r) => setTimeout(r, 1300));
+      await sleep(1400); // slow 1.4s drift
       s.isExploding = false;
     }
 
-    // 2. Immediately after 3, 2, 1: "I love you Vicusea" (5.5s leisurely hold)
-    const isMobile = window.innerWidth < 600;
-    const loveText = isMobile ? 'I love you\nVicusea' : 'I love you Vicusea';
-    setCurrentText('I love you Vicusea');
-    onPhaseChange?.('I love you Vicusea');
-    updateParticleTargets(loveText);
-    await new Promise((r) => setTimeout(r, 5500));
+    // 2. REPEATING LOVE CYCLE: "I love you Vicusea" & Heart loops repeatedly and very slowly!
+    let cycleCount = 0;
+    while (mountedRef.current) {
+      cycleCount++;
 
-    // Slow-motion burst into the finale (1.6s)
-    s.isExploding = true;
-    soundController.playBurstSound();
-    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      navigator.vibrate?.(60);
-    }
-    const canvas = canvasRef.current;
-    if (canvas) {
-      const cx = window.innerWidth / 2;
-      const cy = s.wordCenterY || window.innerHeight / 2;
-      s.particles.forEach((p) => p.explode(cx, cy, 11));
-    }
-    await new Promise((r) => setTimeout(r, 1600));
-    s.isExploding = false;
+      // Phase A: "I love you Vicusea"
+      const isMobile = window.innerWidth < 600;
+      const loveText = isMobile ? 'I love you\nVicusea' : 'I love you Vicusea';
 
-    // 3. Finale: Grand Heart Formation
-    s.state = 'FINAL_HEART';
-    setCurrentText('❤️');
-    setIsFinale(true);
-    onPhaseChange?.('finale');
-    setHeartTargets();
-    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      navigator.vibrate?.([60, 40, 80]);
-    }
+      s.state = 'SEQUENCE';
+      s.textOpacity = 0; // reset heart text opacity
+      setCurrentText('I love you Vicusea');
+      onPhaseChange?.('I love you Vicusea');
+      updateParticleTargets(loveText);
 
-    // Trigger celebratory heart confetti
-    try {
-      confetti({
-        particleCount: window.innerWidth < 600 ? 55 : 85,
-        spread: 90,
-        origin: { y: 0.55 },
-        colors: ['#f43f5e', '#fb7185', '#fda4af', '#ffffff', '#ec4899'],
-        shapes: ['circle'],
-        ticks: 260,
-      });
-    } catch {
-      // Ignore
-    }
+      // Leisurely hold for 6.2s so Vicusea can fully absorb the love
+      await sleep(6200);
+      if (!mountedRef.current) return;
 
-    onSequenceComplete?.();
+      // Slow-motion burst into stardust
+      s.isExploding = true;
+      soundController.playBurstSound();
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        navigator.vibrate?.(45);
+      }
+      if (canvasRef.current) {
+        const cx = window.innerWidth / 2;
+        const cy = s.wordCenterY || window.innerHeight / 2;
+        s.particles.forEach((p) => p.explode(cx, cy, 9.5));
+      }
+      await sleep(1500); // 1.5s slow drift
+      s.isExploding = false;
+      if (!mountedRef.current) return;
+
+      // Phase B: The Grand Pulsing Heart with ripples & "I LOVE YOU VICUSEA ❤️"
+      s.state = 'FINAL_HEART';
+      s.wordOpacity = 0; // reset sequence word opacity
+      s.textOpacity = 0; // fade in heart text smoothly
+      setCurrentText('❤️');
+      setIsFinale(true);
+      onPhaseChange?.('finale');
+      setHeartTargets();
+
+      if (cycleCount === 1) {
+        onSequenceComplete?.();
+      }
+
+      // Celebratory soft heart confetti
+      try {
+        confetti({
+          particleCount: window.innerWidth < 600 ? 50 : 75,
+          spread: 85,
+          origin: { y: 0.55 },
+          colors: ['#f43f5e', '#fb7185', '#fda4af', '#ffffff', '#ec4899'],
+          shapes: ['circle'],
+          ticks: 280,
+        });
+      } catch {
+        // Ignore
+      }
+
+      // Hold in heart state for 7.2s with slow beating heart and radiating ripples
+      await sleep(7200);
+      if (!mountedRef.current) return;
+
+      // Gentle stardust release before reforming back into "I love you Vicusea"
+      s.isExploding = true;
+      soundController.playBurstSound();
+      if (canvasRef.current) {
+        const cx = window.innerWidth / 2;
+        const cy = s.heartCenterY || window.innerHeight / 2;
+        s.particles.forEach((p) => p.explode(cx, cy, 9.0));
+      }
+      await sleep(1500); // 1.5s slow drift
+      s.isExploding = false;
+    }
   }, [updateParticleTargets, setHeartTargets, onPhaseChange, onSequenceComplete]);
 
   // Main render loop
