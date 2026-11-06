@@ -55,9 +55,9 @@ class MainParticle {
     this.alpha = Math.random() * 0.4 + 0.6;
   }
 
-  explode(centerX: number, centerY: number, power: number = 18) {
+  explode(centerX: number, centerY: number, power: number = 10) {
     const angle = Math.atan2(this.y - centerY, this.x - centerX) + (Math.random() - 0.5) * 0.7;
-    const speed = (Math.random() * 0.7 + 0.5) * power;
+    const speed = (Math.random() * 0.5 + 0.3) * power;
     this.vx = Math.cos(angle) * speed;
     this.vy = Math.sin(angle) * speed;
     this.isStreaking = true;
@@ -67,18 +67,18 @@ class MainParticle {
     if (isExploding) {
       this.x += this.vx;
       this.y += this.vy;
-      this.vx *= 0.94;
-      this.vy *= 0.94;
+      this.vx *= 0.972;
+      this.vy *= 0.972;
     } else {
       const dx = this.destX - this.x;
       const dy = this.destY - this.y;
-      this.vx += dx * 0.085;
-      this.vy += dy * 0.085;
-      this.vx *= 0.78;
-      this.vy *= 0.78;
+      this.vx += dx * 0.035;
+      this.vy += dy * 0.035;
+      this.vx *= 0.86;
+      this.vy *= 0.86;
       this.x += this.vx;
       this.y += this.vy;
-      this.isStreaking = Math.hypot(this.vx, this.vy) > 8;
+      this.isStreaking = Math.hypot(this.vx, this.vy) > 5;
     }
 
     // Twinkle shimmer
@@ -88,7 +88,7 @@ class MainParticle {
   draw(ctx: CanvasRenderingContext2D) {
     const speed = Math.hypot(this.vx, this.vy);
 
-    if (this.isStreaking && speed > 3) {
+    if (this.isStreaking && speed > 2.5) {
       // Motion streak line
       ctx.beginPath();
       ctx.moveTo(this.x - this.vx * 1.8, this.y - this.vy * 1.8);
@@ -125,13 +125,13 @@ class RippleParticle {
   vx: number;
   vy: number;
   alpha: number = 0.9;
-  maxLife: number = 48;
+  maxLife: number = 90;
   life: number = 0;
   size: number;
   color: string;
   active: boolean = true;
 
-  constructor(x: number, y: number, nx: number, ny: number, speed: number = 2.4) {
+  constructor(x: number, y: number, nx: number, ny: number, speed: number = 1.0) {
     this.x = x;
     this.y = y;
     this.vx = nx * speed;
@@ -144,8 +144,8 @@ class RippleParticle {
   update() {
     this.x += this.vx;
     this.y += this.vy;
-    this.vx *= 0.98;
-    this.vy *= 0.98;
+    this.vx *= 0.992;
+    this.vy *= 0.992;
     this.life++;
     this.alpha = Math.max(0, 0.9 * (1 - this.life / this.maxLife));
     if (this.life >= this.maxLife) {
@@ -274,7 +274,7 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
       matrixCols.push({
         x: i * colStep + 10,
         y: Math.random() * -h,
-        speed: Math.random() * 2.0 + 1.2,
+        speed: Math.random() * 0.5 + 0.35, // slow, gentle rain
         chars,
         headChar: chars[0],
         length: len,
@@ -306,15 +306,15 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
       // Numbers "3", "2", "1"
       fontSize = isMobile ? Math.min(w * 0.44, 150) : Math.min(w / 3.2, h / 3.2, 190);
     } else {
-      // "I love\nVicusea" (mobile) or "I love Vicusea" (PC)
+      // "I love you\nVicusea" (mobile) or "I love you Vicusea" (PC)
       if (isMobile) {
-        fontSize = Math.min(w / 7.2, 54);
+        fontSize = Math.min(w / 7.6, 50);
       } else {
-        fontSize = Math.min(w / 15, h / 7, 88);
+        fontSize = Math.min(w / 17, h / 7, 78);
       }
     }
 
-    fontSize = Math.max(38, Math.min(fontSize, 190));
+    fontSize = Math.max(36, Math.min(fontSize, 190));
 
     // Store current word info for core glowing text rendering
     stateRef.current.currentWord = text;
@@ -370,7 +370,7 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
     soundController.playHeartbeatSound();
   }, []);
 
-  // Heart Ripple generation with slower, gentle expansion
+  // Heart Ripple generation with very slow, gentle expansion
   const createHeartRipple = () => {
     const s = stateRef.current;
     const count = window.innerWidth < 600 ? 70 : 95;
@@ -381,31 +381,31 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
       const t = i * step;
       const normal = getHeartNormal(t);
       s.rippleParticles.push(
-        new RippleParticle(pt.x, pt.y, normal.nx, normal.ny, Math.random() * 0.8 + 1.3)
+        new RippleParticle(pt.x, pt.y, normal.nx, normal.ny, Math.random() * 0.5 + 0.9)
       );
     });
   };
 
-  // Start sequence animation with slower romantic pacing
+  // Start sequence animation with very slow romantic pacing
   const runSequence = useCallback(async () => {
     const s = stateRef.current;
     s.state = 'MATRIX_INTRO';
     onPhaseChange?.('intro');
 
-    // Matrix rain trickle for 2.6s before countdown
-    await new Promise((r) => setTimeout(r, 2600));
+    // Matrix rain trickle for 3.0s before countdown
+    await new Promise((r) => setTimeout(r, 3000));
 
     s.state = 'SEQUENCE';
 
-    // 1. Countdown: "3", "2", "1" with slower, serene transitions
+    // 1. Countdown: "3", "2", "1" with very slow, serene transitions (3.8s each)
     const countdown = ['3', '2', '1'];
     for (const num of countdown) {
       setCurrentText(num);
       onPhaseChange?.(num);
       updateParticleTargets(num);
-      await new Promise((r) => setTimeout(r, 2800));
+      await new Promise((r) => setTimeout(r, 3800));
 
-      // Slower, softer explosion
+      // Slow, soft explosion (1.3s)
       s.isExploding = true;
       soundController.playBurstSound();
       if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
@@ -415,21 +415,21 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
       if (canvas) {
         const cx = window.innerWidth / 2;
         const cy = s.wordCenterY || window.innerHeight / 2;
-        s.particles.forEach((p) => p.explode(cx, cy, 14));
+        s.particles.forEach((p) => p.explode(cx, cy, 10));
       }
-      await new Promise((r) => setTimeout(r, 950));
+      await new Promise((r) => setTimeout(r, 1300));
       s.isExploding = false;
     }
 
-    // 2. Immediately after 3, 2, 1: "I love Vicusea"
+    // 2. Immediately after 3, 2, 1: "I love you Vicusea" (5.5s leisurely hold)
     const isMobile = window.innerWidth < 600;
-    const loveText = isMobile ? 'I love\nVicusea' : 'I love Vicusea';
-    setCurrentText('I love Vicusea');
-    onPhaseChange?.('I love Vicusea');
+    const loveText = isMobile ? 'I love you\nVicusea' : 'I love you Vicusea';
+    setCurrentText('I love you Vicusea');
+    onPhaseChange?.('I love you Vicusea');
     updateParticleTargets(loveText);
-    await new Promise((r) => setTimeout(r, 3800));
+    await new Promise((r) => setTimeout(r, 5500));
 
-    // Slow-motion burst into the finale
+    // Slow-motion burst into the finale (1.6s)
     s.isExploding = true;
     soundController.playBurstSound();
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
@@ -439,9 +439,9 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
     if (canvas) {
       const cx = window.innerWidth / 2;
       const cy = s.wordCenterY || window.innerHeight / 2;
-      s.particles.forEach((p) => p.explode(cx, cy, 16));
+      s.particles.forEach((p) => p.explode(cx, cy, 11));
     }
-    await new Promise((r) => setTimeout(r, 1100));
+    await new Promise((r) => setTimeout(r, 1600));
     s.isExploding = false;
 
     // 3. Finale: Grand Heart Formation
@@ -462,7 +462,7 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
         origin: { y: 0.55 },
         colors: ['#f43f5e', '#fb7185', '#fda4af', '#ffffff', '#ec4899'],
         shapes: ['circle'],
-        ticks: 240,
+        ticks: 260,
       });
     } catch {
       // Ignore
@@ -509,7 +509,7 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
 
     const render = () => {
       const s = stateRef.current;
-      s.time += 0.04;
+      s.time += 0.024; // gentle, slower simulation step
       const w = window.innerWidth;
       const h = window.innerHeight;
       const isMobile = w < 600;
@@ -524,7 +524,7 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
         col.y += col.speed;
         if (col.y > h + 150) {
           col.y = -Math.random() * 200 - 50;
-          col.speed = Math.random() * 2.0 + 1.2;
+          col.speed = Math.random() * 0.5 + 0.35;
         }
 
         col.changeTimer++;
@@ -553,8 +553,8 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
 
       // 2. Draw & Update Main Particles
       if (s.state === 'FINAL_HEART') {
-        // Heartbeat pulsation
-        const beat = 1 + 0.045 * Math.sin(s.time * 2.8) + 0.02 * Math.sin(s.time * 5.6);
+        // Calm, slower heartbeat pulsation
+        const beat = 1 + 0.038 * Math.sin(s.time * 1.35) + 0.016 * Math.sin(s.time * 2.7);
         const curScale = s.heartScale * beat;
         const heartPoints = getHeartOutlinePoints(100, s.heartCenterX, s.heartCenterY, curScale);
 
@@ -568,9 +568,9 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
           }
         });
 
-        // Spawn periodic heart ripples
+        // Spawn periodic heart ripples (slower interval)
         s.rippleTimer++;
-        if (s.rippleTimer % (isMobile ? 24 : 22) === 0) {
+        if (s.rippleTimer % (isMobile ? 36 : 30) === 0) {
           createHeartRipple();
         }
 
@@ -597,9 +597,9 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
         const sp = s.sparkles[i];
         sp.x += sp.vx;
         sp.y += sp.vy;
-        sp.vy -= 0.03; // float gently upward
+        sp.vy -= 0.02; // float gently upward
         sp.rotation += sp.vRot;
-        sp.alpha -= 0.015;
+        sp.alpha -= 0.012;
 
         if (sp.alpha <= 0) {
           s.sparkles.splice(i, 1);
@@ -629,9 +629,9 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
       // 3.5 Draw sequence word if active (guarantees crystal-clear legibility on mobile & PC)
       if (s.state === 'SEQUENCE' && s.currentWord) {
         if (!s.isExploding && s.wordOpacity < 0.96) {
-          s.wordOpacity += 0.04;
+          s.wordOpacity += 0.035; // gentle fade in
         } else if (s.isExploding) {
-          s.wordOpacity = Math.max(0, s.wordOpacity - 0.07);
+          s.wordOpacity = Math.max(0, s.wordOpacity - 0.05);
         }
 
         if (s.wordOpacity > 0.02) {
@@ -656,10 +656,10 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
         }
       }
 
-      // 4. Draw Final Glowing Center Text: "I LOVE VICUSEA ❤️"
+      // 4. Draw Final Glowing Center Text: "I LOVE YOU VICUSEA ❤️"
       if (s.state === 'FINAL_HEART') {
         if (s.textOpacity < 1) {
-          s.textOpacity += 0.015;
+          s.textOpacity += 0.01;
         }
 
         ctx.save();
@@ -677,10 +677,10 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
           const line2Size = Math.min(Math.max(w / 13, 24), 30);
           const centerY = s.heartCenterY + 4;
 
-          // Line 1: "I LOVE"
+          // Line 1: "I LOVE YOU"
           ctx.font = `700 ${line1Size}px "Plus Jakarta Sans", sans-serif, system-ui`;
           ctx.fillStyle = `rgba(255, 255, 255, ${s.textOpacity})`;
-          ctx.fillText('I LOVE', s.heartCenterX, centerY - 16);
+          ctx.fillText('I LOVE YOU', s.heartCenterX, centerY - 16);
 
           // Line 2: "VICUSEA ❤️"
           ctx.font = `900 ${line2Size}px "Plus Jakarta Sans", sans-serif, system-ui`;
@@ -702,7 +702,7 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
 
           ctx.font = `900 ${fontSize}px "Plus Jakarta Sans", sans-serif, system-ui`;
           ctx.fillStyle = `rgba(255, 255, 255, ${s.textOpacity})`;
-          ctx.fillText('I LOVE VICUSEA ❤️', s.heartCenterX, textY);
+          ctx.fillText('I LOVE YOU VICUSEA ❤️', s.heartCenterX, textY);
 
           if (s.textOpacity > 0.4) {
             const subAlpha = (s.textOpacity - 0.4) * 1.6;
