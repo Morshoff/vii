@@ -98,32 +98,42 @@ export function sampleTextPoints(
   width: number,
   height: number,
   fontSize: number,
-  densityStep: number = 4
+  centerY?: number,
+  densityStep: number = 3
 ): Point[] {
   const offscreen = document.createElement('canvas');
+  // Use compact dimension around target area
   offscreen.width = width;
   offscreen.height = height;
   const ctx = offscreen.getContext('2d', { willReadFrequently: true });
   if (!ctx) return [];
 
+  const cy = centerY !== undefined ? centerY : height / 2;
+
   ctx.fillStyle = '#000000';
   ctx.fillRect(0, 0, width, height);
 
-  ctx.font = `bold ${fontSize}px "Plus Jakarta Sans", system-ui, -apple-system, sans-serif`;
+  // Use rock-solid cross-platform sans-serif font stack
+  ctx.font = `900 ${fontSize}px sans-serif, -apple-system, system-ui`;
   ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, width / 2, height / 2);
+  ctx.fillText(text, width / 2, cy);
 
   const imgData = ctx.getImageData(0, 0, width, height);
   const data = imgData.data;
   const points: Point[] = [];
 
-  for (let y = 0; y < height; y += densityStep) {
+  // Bounding box optimization: only scan around the text vertical region
+  const minY = Math.max(0, Math.floor(cy - fontSize * 1.1));
+  const maxY = Math.min(height, Math.ceil(cy + fontSize * 1.1));
+
+  for (let y = minY; y < maxY; y += densityStep) {
     for (let x = 0; x < width; x += densityStep) {
       const idx = (y * width + x) * 4;
-      // If brightness / alpha is sufficient
-      if (data[idx] > 128) {
+      // Check brightness of RGB or alpha channel with lower threshold (covers anti-aliasing)
+      const brightness = Math.max(data[idx], data[idx + 1], data[idx + 2]);
+      if (brightness > 60 || data[idx + 3] > 60) {
         points.push({
           x: x + (Math.random() - 0.5) * 1.5,
           y: y + (Math.random() - 0.5) * 1.5,

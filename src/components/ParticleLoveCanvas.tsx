@@ -114,6 +114,7 @@ class MainParticle {
         ctx.fill();
       }
     }
+    ctx.globalAlpha = 1.0;
   }
 }
 
@@ -159,6 +160,7 @@ class RippleParticle {
     ctx.fillStyle = this.color;
     ctx.globalAlpha = this.alpha;
     ctx.fill();
+    ctx.globalAlpha = 1.0;
   }
 }
 
@@ -214,6 +216,10 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
     heartCenterX: number;
     heartCenterY: number;
     currentWordIndex: number;
+    currentWord: string;
+    wordOpacity: number;
+    wordFontSize: number;
+    wordCenterY: number;
   }>({
     state: 'IDLE',
     particles: [],
@@ -228,6 +234,10 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
     heartCenterX: 0,
     heartCenterY: 0,
     currentWordIndex: -1,
+    currentWord: '',
+    wordOpacity: 0,
+    wordFontSize: 50,
+    wordCenterY: 0,
   });
 
   // Matrix characters: romantic phrase "I LOVE YOU VICUSEA ❤"
@@ -275,7 +285,6 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
     stateRef.current.particles = particles;
     stateRef.current.matrixCols = matrixCols;
     stateRef.current.heartCenterX = w / 2;
-    // On mobile portrait, position heart slightly higher to leave space for bottom controls
     stateRef.current.heartCenterY = isMobile ? h * 0.44 : h / 2 - 15;
     stateRef.current.heartScale = isMobile ? Math.min(w / 31, h / 42) : Math.min(w, h) / 38;
   }, []);
@@ -288,22 +297,32 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
     const h = window.innerHeight;
     const isMobile = w < 600;
 
+    // Center Y position for text and heart
+    const cy = isMobile ? h * 0.44 : h / 2 - 15;
+
     // Dynamic responsive font size tailored for mobile viewports
     let fontSize: number;
     if (text.length <= 2) {
       // Numbers "3", "2", "1" or "I"
-      fontSize = isMobile ? Math.min(w * 0.42, 140) : Math.min(w / 3.5, h / 3.5, 180);
+      fontSize = isMobile ? Math.min(w * 0.44, 150) : Math.min(w / 3.2, h / 3.2, 190);
     } else if (text.length <= 4) {
       // "love", "you,"
-      fontSize = isMobile ? Math.min(w * 0.26, 95) : Math.min(w / 4.8, h / 4.5, 140);
+      fontSize = isMobile ? Math.min(w * 0.28, 105) : Math.min(w / 4.4, h / 4.2, 150);
     } else {
       // "Vicusea"
-      fontSize = isMobile ? Math.min(w / (text.length * 0.65), 78) : Math.min(w / 5.5, h / 4.8, 130);
+      fontSize = isMobile ? Math.min(w / (text.length * 0.62), 85) : Math.min(w / 5.2, h / 4.5, 140);
     }
 
-    fontSize = Math.max(38, Math.min(fontSize, 180));
-    const densityStep = isMobile ? 3 : (text.length > 5 ? 4 : 3);
-    const textPoints = sampleTextPoints(text, w, h, fontSize, densityStep);
+    fontSize = Math.max(42, Math.min(fontSize, 190));
+
+    // Store current word info for core glowing text rendering
+    stateRef.current.currentWord = text;
+    stateRef.current.wordOpacity = 0;
+    stateRef.current.wordFontSize = fontSize;
+    stateRef.current.wordCenterY = cy;
+
+    const densityStep = isMobile ? 2 : 3;
+    const textPoints = sampleTextPoints(text, w, h, fontSize, cy, densityStep);
     const particles = stateRef.current.particles;
 
     if (textPoints.length === 0) return;
@@ -463,13 +482,23 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const w = window.innerWidth;
       const h = window.innerHeight;
+      const isMobile = w < 600;
+
       canvas.width = w * dpr;
       canvas.height = h * dpr;
       ctx.setTransform(1, 0, 0, 1, 0, 0); // reset transform before scaling
       ctx.scale(dpr, dpr);
-      initSimulation();
-      if (stateRef.current.state === 'FINAL_HEART') {
+
+      stateRef.current.heartCenterX = w / 2;
+      stateRef.current.heartCenterY = isMobile ? h * 0.44 : h / 2 - 15;
+      stateRef.current.heartScale = isMobile ? Math.min(w / 31, h / 42) : Math.min(w, h) / 38;
+
+      if (stateRef.current.particles.length === 0) {
+        initSimulation();
+      } else if (stateRef.current.state === 'FINAL_HEART') {
         setHeartTargets();
+      } else if (stateRef.current.state === 'SEQUENCE' && stateRef.current.currentWord) {
+        updateParticleTargets(stateRef.current.currentWord);
       }
     };
 
@@ -596,57 +625,79 @@ export const ParticleLoveCanvas: React.FC<ParticleLoveCanvasProps> = ({
         ctx.restore();
       }
 
+      // 3.5 Draw sequence word if active (guarantees crystal-clear legibility on mobile)
+      if (s.state === 'SEQUENCE' && s.currentWord) {
+        if (!s.isExploding && s.wordOpacity < 0.96) {
+          s.wordOpacity += 0.06;
+        } else if (s.isExploding) {
+          s.wordOpacity = 0;
+        }
+
+        if (s.wordOpacity > 0.02) {
+          ctx.save();
+          ctx.globalAlpha = s.wordOpacity;
+          ctx.font = `900 ${s.wordFontSize}px "Plus Jakarta Sans", sans-serif, system-ui`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.shadowColor = 'rgba(244, 63, 94, 0.95)';
+          ctx.shadowBlur = isMobile ? 22 : 32;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(s.currentWord, w / 2, s.wordCenterY);
+          ctx.restore();
+        }
+      }
+
       // 4. Draw Final Glowing Center Text: "I LOVE YOU, VICUSEA ❤️"
       if (s.state === 'FINAL_HEART') {
         if (s.textOpacity < 1) {
-          s.textOpacity += 0.012;
+          s.textOpacity += 0.015;
         }
 
         ctx.save();
+        ctx.globalAlpha = 1.0;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
 
         // Outer glow
-        ctx.shadowColor = 'rgba(244, 63, 94, 0.9)';
-        ctx.shadowBlur = isMobile ? 18 : 24;
+        ctx.shadowColor = 'rgba(244, 63, 94, 0.95)';
+        ctx.shadowBlur = isMobile ? 20 : 28;
 
         if (isMobile) {
           // On mobile: 2-line layout fits naturally inside the heart cavity
-          const line1Size = Math.min(Math.max(w / 18, 17), 22);
-          const line2Size = Math.min(Math.max(w / 15, 20), 26);
-
+          const line1Size = Math.min(Math.max(w / 16, 20), 25);
+          const line2Size = Math.min(Math.max(w / 13, 24), 30);
           const centerY = s.heartCenterY + 4;
 
           // Line 1: "I LOVE YOU,"
-          ctx.font = `600 ${line1Size}px "Plus Jakarta Sans", system-ui, sans-serif`;
-          ctx.fillStyle = `rgba(255, 255, 255, ${s.textOpacity * 0.95})`;
-          ctx.fillText('I LOVE YOU,', s.heartCenterX, centerY - 14);
+          ctx.font = `700 ${line1Size}px "Plus Jakarta Sans", sans-serif, system-ui`;
+          ctx.fillStyle = `rgba(255, 255, 255, ${s.textOpacity})`;
+          ctx.fillText('I LOVE YOU,', s.heartCenterX, centerY - 16);
 
           // Line 2: "VICUSEA ❤️"
-          ctx.font = `bold ${line2Size}px "Plus Jakarta Sans", system-ui, sans-serif`;
+          ctx.font = `900 ${line2Size}px "Plus Jakarta Sans", sans-serif, system-ui`;
           ctx.fillStyle = `rgba(255, 255, 255, ${s.textOpacity})`;
-          ctx.fillText('VICUSEA ❤️', s.heartCenterX, centerY + 14);
+          ctx.fillText('VICUSEA ❤️', s.heartCenterX, centerY + 16);
 
           // Subtitle
-          if (s.textOpacity > 0.5) {
-            const subAlpha = (s.textOpacity - 0.5) * 1.5;
-            ctx.font = `400 11px "Plus Jakarta Sans", sans-serif`;
+          if (s.textOpacity > 0.4) {
+            const subAlpha = (s.textOpacity - 0.4) * 1.6;
+            ctx.font = `500 12px "Plus Jakarta Sans", sans-serif`;
             ctx.fillStyle = `rgba(254, 205, 211, ${subAlpha})`;
             ctx.shadowBlur = 8;
-            ctx.fillText('forever & always in my heart', s.heartCenterX, centerY + 40);
+            ctx.fillText('forever & always in my heart', s.heartCenterX, centerY + 44);
           }
         } else {
           // Desktop single line
-          const fontSize = Math.min(Math.max(w / 24, 18), 34);
+          const fontSize = Math.min(Math.max(w / 22, 22), 36);
           const textY = s.heartCenterY + 12;
 
-          ctx.font = `bold ${fontSize}px "Plus Jakarta Sans", system-ui, sans-serif`;
+          ctx.font = `900 ${fontSize}px "Plus Jakarta Sans", sans-serif, system-ui`;
           ctx.fillStyle = `rgba(255, 255, 255, ${s.textOpacity})`;
           ctx.fillText('I LOVE YOU, VICUSEA ❤️', s.heartCenterX, textY);
 
-          if (s.textOpacity > 0.5) {
-            const subAlpha = (s.textOpacity - 0.5) * 1.6;
-            ctx.font = `400 ${Math.max(12, fontSize * 0.45)}px "Plus Jakarta Sans", sans-serif`;
+          if (s.textOpacity > 0.4) {
+            const subAlpha = (s.textOpacity - 0.4) * 1.6;
+            ctx.font = `500 ${Math.max(13, fontSize * 0.45)}px "Plus Jakarta Sans", sans-serif`;
             ctx.fillStyle = `rgba(254, 205, 211, ${subAlpha})`;
             ctx.shadowBlur = 10;
             ctx.fillText('forever & always in my heart', s.heartCenterX, textY + fontSize * 1.4);
